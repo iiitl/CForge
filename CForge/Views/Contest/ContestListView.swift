@@ -50,8 +50,7 @@ struct ContestListView: View {
                                 NavigationLink {
                                     ContestDetailView(contest: contest)
                                 } label: {
-                                    Text(contest.name)
-                                        .padding()
+                                    ContestCardView(contest: contest)
                                 }
                             }
                         }
