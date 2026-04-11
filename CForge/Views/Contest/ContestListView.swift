@@ -10,6 +10,10 @@ struct ContestListView: View {
     @State internal var errorMessage: String?
     @State internal var showError = false
     
+    @State internal var selectedPhase: ContestPhaseSelection = .upcoming
+    @State internal var selectedType: ContestTypeSelection = .all
+    @State internal var ratedOnly: Bool = false
+    
     var body: some View {
         NavigationStack {
             Group {
@@ -34,9 +38,12 @@ struct ContestListView: View {
     private var contentView: some View {
         ScrollView {
             SearchBar(text: $searchText, placeholder: "Search contests...")
-                            .padding(.horizontal)
-                            .padding(.top, 8)
-                            .shadow(radius: 1)
+                .padding(.horizontal)
+                .padding(.top, 8)
+                .shadow(radius: 1)
+            
+            filterSection
+            
             LazyVStack(spacing: 0) {
                 ForEach(filteredContests) { contest in
                     NavigationLink {
@@ -51,7 +58,6 @@ struct ContestListView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
-
         .background(
             LinearGradient(
                 colors: [.darkBackground, .darkestBackground],
@@ -62,14 +68,54 @@ struct ContestListView: View {
         )
         .refreshable { await refreshContests() }
     }
+    
+    private var filterSection: some View {
+        VStack(spacing: 12) {
+            Picker("Phase", selection: $selectedPhase) {
+                ForEach(ContestPhaseSelection.allCases, id: \.self) { phase in
+                    Text(phase.rawValue).tag(phase)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ContestTypeSelection.allCases, id: \.self) { type in
+                        FilterChip(title: type.rawValue, isSelected: selectedType == type) {
+                            selectedType = type
+                        }
+                    }
+
+                    Divider()
+                        .frame(height: 20)
+                        .background(Color.gray.opacity(0.5))
+
+                    FilterChip(title: "Rated Only", isSelected: ratedOnly) {
+                        ratedOnly.toggle()
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+        .padding(.top, 8)
+    }
 
     private func contestCard(contest: CFContest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             
             VStack(alignment: .leading, spacing: 6) {
-                Text(contest.name)
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                HStack {
+                    Text(contest.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    if ["CODING", "PENDING_SYSTEM_TEST", "SYSTEM_TEST"].contains(contest.phase) {
+                        LiveBadge()
+                    }
+                }
                 
                 HStack(spacing: 16) {
                     Label(contest.startTime.formatted(date: .omitted, time: .shortened),
@@ -81,11 +127,9 @@ struct ContestListView: View {
                 .labelStyle(NeonLabelStyle())
             }
             
-
             Divider()
                 .padding(.vertical, 4)
             
-
             HStack {
                 if contest.isRated {
                     Text("Rated")
@@ -101,15 +145,15 @@ struct ContestListView: View {
                 Spacer()
                 
                 NavigationLink(destination: ContestDetailView(contest: contest)) {
-                                Text("Register")
-                                    .font(.caption)
-                                    .fontWeight(.semibold)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(Color.blue.opacity(0.1))
-                                    .foregroundColor(.blue)
-                                    .cornerRadius(4)
-                            }
+                    Text(contest.phase == "FINISHED" ? "View Details" : "Register")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 4)
+                        .background(Color.blue.opacity(0.1))
+                        .foregroundColor(.blue)
+                        .cornerRadius(4)
+                }
                 .buttonStyle(.plain)
             }
         }
@@ -136,7 +180,9 @@ struct ContestListView: View {
         .shadow(color: .neonBlue.opacity(0.2), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 4)
         .padding(.vertical, 8)
+        .opacity(contest.phase == "FINISHED" ? 0.6 : 1.0)
     }
+    
     struct NeonLabelStyle: LabelStyle {
         func makeBody(configuration: Configuration) -> some View {
             HStack(spacing: 4) {
@@ -149,6 +195,75 @@ struct ContestListView: View {
 }
 
 // MARK: - Subviews
+struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    ZStack {
+                        if isSelected {
+                            LinearGradient(
+                                colors: [.neonBlue, .neonPurple],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        } else {
+                            Color.darkerBackground
+                        }
+                    }
+                )
+                .foregroundColor(isSelected ? .white : .primary)
+                .cornerRadius(12)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            LinearGradient(
+                                colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct LiveBadge: View {
+    @State private var isPulsing = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 6, height: 6)
+                .opacity(isPulsing ? 0.3 : 1.0)
+            Text("LIVE")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundColor(.red)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(4)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
+        }
+    }
+}
+
 struct ContestRow: View {
     let contest: ContestListView.CFContest
     
@@ -192,21 +307,21 @@ struct ContestDetailView: View {
                 infoSection
                 Divider()
                 actionButtons
-                
             }
             .padding()
         }
         .navigationTitle("Contest Details")
         .navigationBarTitleDisplayMode(.inline)
         .background(
-                    LinearGradient(
-                        colors: [.darkBackground, .darkerBackground],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                )
+            LinearGradient(
+                colors: [.darkBackground, .darkerBackground],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
     }
+    
     private func detailRow(icon: String, title: String, value: String) -> some View {
         HStack {
             Label {
@@ -225,6 +340,7 @@ struct ContestDetailView: View {
                 .foregroundColor(.primary)
         }
     }
+    
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(contest.name)
@@ -240,148 +356,145 @@ struct ContestDetailView: View {
         }
     }
 
-    
     private func pillLabel(text: String, colors: [Color]) -> some View {
-           Text(text)
-               .font(.caption.weight(.semibold))
-               .padding(.horizontal, 12)
-               .padding(.vertical, 6)
-               .background(
-                   LinearGradient(
-                       colors: colors,
-                       startPoint: .leading,
-                       endPoint: .trailing
-                   )
-               )
-               .foregroundColor(.white)
-               .cornerRadius(8)
-       }
+        Text(text)
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                LinearGradient(
+                    colors: colors,
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            .foregroundColor(.white)
+            .cornerRadius(8)
+    }
     
     private var countdownSection: some View {
-            VStack(spacing: 8) {
-                Text("Starts in")
-                    .font(.subheadline)
+        VStack(spacing: 8) {
+            Text("Starts in")
+                .font(.subheadline)
+                .foregroundColor(.textSecondary)
+            
+            HStack(spacing: 4) {
+                Text(contest.timeUntilStart)
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [.neonBlue, .neonPurple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            }
+            
+            Text("Days    Hours    Minutes")
+                .font(.caption)
+                .foregroundColor(.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.darkerBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(
+                            LinearGradient(
+                                colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+    }
+    
+    private var infoSection: some View {
+        VStack(spacing: 16) {
+            infoRow(icon: "calendar", title: "Start Time",
+                   value: contest.startTime.formatted(date: .complete, time: .shortened))
+            
+            infoRow(icon: "clock", title: "Duration",
+                   value: contest.duration)
+            
+            infoRow(icon: "person.2.fill", title: "Type",
+                    value: contest.type)
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color.darkerBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(
+                            LinearGradient(
+                                colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+    }
+    
+    private func infoRow(icon: String, title: String, value: String) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundColor(.neonBlue)
+                .frame(width: 30)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
                     .foregroundColor(.textSecondary)
+                    .font(.subheadline)
                 
-                HStack(spacing: 4) {
-                    Text(contest.timeUntilStart)
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundStyle(
+                Text(value)
+                    .foregroundColor(.textPrimary)
+                    .font(.body.weight(.medium))
+            }
+            
+            Spacer()
+        }
+    }
+    
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            if let registrationUrl = contest.registrationUrl {
+                Link(destination: contest.registrationUrl ?? URL(string: "https://codeforces.com")!) {
+                    Text("Register Now")
+                        .font(.headline.weight(.bold))
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
                             LinearGradient(
                                 colors: [.neonBlue, .neonPurple],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             )
-                        )
-                }
-                
-                Text("Days    Hours    Minutes")
-                    .font(.caption)
-                    .foregroundColor(.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.darkerBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
+                            .cornerRadius(12)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.white.opacity(0.2), lineWidth: 1)
                             )
-                    )
-            )
-        }
-    
-        private var infoSection: some View {
-           VStack(spacing: 16) {
-               infoRow(icon: "calendar", title: "Start Time",
-                      value: contest.startTime.formatted(date: .complete, time: .shortened))
-               
-               infoRow(icon: "clock", title: "Duration",
-                      value: contest.duration)
-               
-               infoRow(icon: "person.2.fill", title: "Type",
-                       value: contest.type)
-           }
-           .padding()
-           .background(
-               RoundedRectangle(cornerRadius: 16)
-                   .fill(Color.darkerBackground)
-                   .overlay(
-                       RoundedRectangle(cornerRadius: 16)
-                           .stroke(
-                               LinearGradient(
-                                   colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
-                                   startPoint: .topLeading,
-                                   endPoint: .bottomTrailing
-                               ),
-                               lineWidth: 1
-                           )
-                   )
-           )
-       }
-    
-    private func infoRow(icon: String, title: String, value: String) -> some View {
-            HStack {
-                Image(systemName: icon)
-                    .foregroundColor(.neonBlue)
-                    .frame(width: 30)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(title)
-                        .foregroundColor(.textSecondary)
-                        .font(.subheadline)
+                        )
+                        .foregroundColor(.white)
+                        .shadow(color: .neonBlue.opacity(0.4), radius: 8, x: 0, y: 4)
+                }
+            } else {
+                Button("Registration Closed") {
                     
-                    Text(value)
-                        .foregroundColor(.textPrimary)
-                        .font(.body.weight(.medium))
                 }
-                
-                Spacer()
+                .disabled(true)
+                .buttonStyle(PrimaryButtonStyle())
             }
         }
-    
-        private var actionButtons: some View {
-            VStack(spacing: 12) {
-                
-                if let registrationUrl = contest.registrationUrl {
-                    Link(destination: contest.registrationUrl ?? URL(string: "https://codeforces.com")!) {
-                                Text("Register Now")
-                                    .font(.headline.weight(.bold))
-                                    .frame(maxWidth: .infinity)
-                                    .padding()
-                                    .background(
-                                        LinearGradient(
-                                            colors: [.neonBlue, .neonPurple],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                        .cornerRadius(12)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 12)
-                                                .stroke(.white.opacity(0.2), lineWidth: 1)
-                                        )
-                                    )
-                                    .foregroundColor(.white)
-                                    .shadow(color: .neonBlue.opacity(0.4), radius: 8, x: 0, y: 4)
-                            }
-                } else {
-                    Button("Registration Closed") {
-                        
-                    }
-                    .disabled(true)
-                    .buttonStyle(PrimaryButtonStyle())
-                }
-                
-            }
-            .padding(.top, 8)
-        }
+        .padding(.top, 8)
+    }
 
     private func showAlert(title: String, message: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
@@ -393,7 +506,6 @@ struct ContestDetailView: View {
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         rootViewController.present(alert, animated: true)
     }
-    
 }
 
 // MARK: - Styles
