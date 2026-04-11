@@ -13,7 +13,7 @@ struct ContestListView: View {
     private let phases = ["Upcoming", "Active", "Finished"]
 
     var body: some View {
-        NavigationView {
+        NavigationStack {
             VStack {
 
                 Picker("Phase", selection: $selectedPhase) {
