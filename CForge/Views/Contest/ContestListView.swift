@@ -183,7 +183,6 @@ struct ContestRow: View {
 struct ContestDetailView: View {
     let contest: ContestListView.CFContest
     @StateObject internal var calenderService = CalendarService()
-    @State internal var showCalendarEditor = false
     @State internal var upcomingContest : EKEvent?
     @State internal var showAlert = false
     
@@ -210,10 +209,8 @@ struct ContestDetailView: View {
             )
             .ignoresSafeArea()
         )
-        .sheet(isPresented: $showCalendarEditor){
-            if let event = upcomingContest {
-                EventEditView(eventStore: calenderService.calendarStore, event: event)
-            }
+        .sheet(item: $upcomingContest) { event in
+            EventEditView(eventStore: calenderService.calendarStore, event: event)
         }
         .alert("Calendar Access Required", isPresented: $showAlert) {
             Button("Open Settings"){
@@ -401,11 +398,15 @@ struct ContestDetailView: View {
                 Task{
                     let granted = await calenderService.requestAccess()
                     if granted {
-                        upcomingContest = calenderService.pinEvents(for: contest)
-                        showCalendarEditor = true
+                        let newEvent = calenderService.pinEvents(for: contest)
+                        await MainActor.run {
+                            self.upcomingContest = newEvent
+                        }
                     }
                     else{
-                        showAlert = true
+                        await MainActor.run {
+                            self.showAlert = true
+                        }
                     }
                 }
             }) {
@@ -478,4 +479,11 @@ struct SecondaryButtonStyle: ButtonStyle {
 // MARK: - Preview
 #Preview {
     ContestListView()
+}
+
+
+extension EKEvent: Identifiable {
+    public var id: String {
+        self.eventIdentifier ?? UUID().uuidString
+    }
 }
