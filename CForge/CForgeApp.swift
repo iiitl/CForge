@@ -15,14 +15,9 @@ struct CForgeApp: App {
                 )
                 
                 if showSplash {
-                    SplashView(onComplete: {})
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                                withAnimation {
-                                    showSplash = false
-                                }
-                            }
-                        }
+                    SplashView(onComplete: {
+                        withAnimation { showSplash = false }
+                    })
                 } else {
                     if let handle = userHandle {
                         ContentView()

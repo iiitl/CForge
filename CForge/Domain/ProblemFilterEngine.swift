@@ -4,7 +4,8 @@ struct ProblemFilterEngine {
     static func filter(
         problems: [Problem],
         query: String,
-        selectedTag: String?
+        selectedTag: String?,
+        ratingRange: ClosedRange<Int>?
     ) -> [Problem] {
         
         let queryFiltered: [Problem]
@@ -27,12 +28,19 @@ struct ProblemFilterEngine {
             }
         }
         
-        guard let tag = selectedTag else {
-            return queryFiltered
+        let tagFiltered: [Problem]
+                if let tag = selectedTag {
+                    tagFiltered = queryFiltered.filter { $0.tags.contains(tag) }
+                } else {
+                    tagFiltered = queryFiltered
+                }
+                if let range = ratingRange {
+                    return tagFiltered.filter { problem in
+                        guard let rating = problem.rating else { return false } // exclude nil
+                        return range.contains(rating)
+                    }
+                }
+                
+                return tagFiltered
+            }
         }
-        
-        return queryFiltered.filter { problem in
-            problem.tags.contains(tag)
-        }
-    }
-}
