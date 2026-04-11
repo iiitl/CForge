@@ -16,6 +16,7 @@ struct ContestListView: View {
         NavigationStack {
             VStack {
 
+                // Phase Picker
                 Picker("Phase", selection: $selectedPhase) {
                     ForEach(phases, id: \.self) {
                         Text($0)
@@ -24,6 +25,7 @@ struct ContestListView: View {
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
 
+                // Type Filters
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 10) {
 
@@ -54,12 +56,12 @@ struct ContestListView: View {
                     .padding(.horizontal)
                 }
 
+                // Main Content
                 if isRefreshing {
                     ProgressView("Loading contests...")
                         .foregroundColor(.white)
                         .padding()
-                }
-                else {
+                } else {
                     ScrollView {
                         LazyVStack(spacing: 12) {
 
@@ -85,7 +87,6 @@ struct ContestListView: View {
                                         }
 
                                         HStack(spacing: 16) {
-
                                             if let start = contest.startTimeSeconds {
                                                 Text(timeString(from: start))
                                                     .foregroundColor(.cyan)
@@ -99,7 +100,6 @@ struct ContestListView: View {
 
                                         HStack {
                                             Spacer()
-
                                             Text("Register")
                                                 .font(.caption)
                                                 .padding(.horizontal, 12)
@@ -128,22 +128,27 @@ struct ContestListView: View {
                             }
                         }
                     }
-                }
+                    .refreshable {
+                        await loadContests()
+                    }
                 }
             }
             .navigationTitle("Contests")
-            .background(Color.black.edgesIgnoringSafeArea(.all))
+            .background(Color.black.ignoresSafeArea())
+
+            // Error Alert
             .alert("Error", isPresented: $showError) {
                 Button("OK") {}
             } message: {
                 Text(errorMessage)
             }
+
+            // Initial Load
             .onAppear {
                 Task {
                     await loadContests()
                 }
             }
-            
         }
     }
 
@@ -160,4 +165,3 @@ struct ContestListView: View {
         return "\(hours)h \(minutes)m"
     }
 }
-
