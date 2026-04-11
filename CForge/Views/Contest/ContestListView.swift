@@ -2,128 +2,56 @@ import SwiftUI
 
 struct ContestListView: View {
 
-    @State var contests: [CFContest] = []
-    @State var selectedPhase: String = "Upcoming"
-    @State var selectedType: String = "All"
-    @State var ratedOnly: Bool = false
-    @State var isRefreshing: Bool = false
-    @State var showError: Bool = false
-    @State var errorMessage: String = ""
+    @State private var contests: [CFContest] = []
+    @State private var selectedPhase = "Upcoming"
+    @State private var selectedType = "All"
+    @State private var ratedOnly = false
+    @State private var isRefreshing = false
+    @State private var showError = false
+    @State private var errorMessage = ""
+    @State private var searchText = ""
 
     private let phases = ["Upcoming", "Active", "Finished"]
 
     var body: some View {
         NavigationStack {
-            VStack {
+            VStack(spacing: 12) {
 
-                // Phase Picker
                 Picker("Phase", selection: $selectedPhase) {
-                    ForEach(phases, id: \.self) {
-                        Text($0)
-                    }
+                    ForEach(phases, id: \.self) { Text($0) }
                 }
                 .pickerStyle(.segmented)
                 .padding(.horizontal)
 
-                // Type Filters
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-
+                    HStack {
                         ForEach(["All", "CF", "ICPC", "IOI"], id: \.self) { type in
-                            Button(action: {
+                            Button {
                                 selectedType = type
-                            }) {
+                            } label: {
                                 Text(type)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 6)
-                                    .background(selectedType == type ? Color.blue : Color.gray.opacity(0.2))
-                                    .foregroundColor(.white)
-                                    .cornerRadius(10)
+                                    .padding(8)
+                                    .background(selectedType == type ? Color.blue : Color.gray.opacity(0.3))
+                                    .cornerRadius(8)
                             }
                         }
-
-                        Button(action: {
-                            ratedOnly.toggle()
-                        }) {
-                            Text("Rated")
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(ratedOnly ? Color.green : Color.gray.opacity(0.2))
-                                .foregroundColor(.white)
-                                .cornerRadius(10)
-                        }
                     }
-                    .padding(.horizontal)
                 }
 
-                // Main Content
+                ContestSearchBar(text: $searchText, placeholder: "Search contests...")
+                    .padding(.horizontal)
+
                 if isRefreshing {
-                    ProgressView("Loading contests...")
-                        .foregroundColor(.white)
-                        .padding()
+                    ProgressView()
                 } else {
                     ScrollView {
-                        LazyVStack(spacing: 12) {
-
+                        LazyVStack {
                             ForEach(filteredContests) { contest in
-                                NavigationLink(destination: Text(contest.name)) {
-
-                                    VStack(alignment: .leading, spacing: 10) {
-
-                                        HStack {
-                                            Text(contest.name)
-                                                .font(.headline)
-                                                .foregroundColor(.white)
-
-                                            Spacer()
-
-                                            if ["CODING", "PENDING_SYSTEM_TEST", "SYSTEM_TEST"].contains(contest.phase) {
-                                                Text("LIVE")
-                                                    .font(.caption)
-                                                    .padding(6)
-                                                    .background(Color.red)
-                                                    .cornerRadius(6)
-                                            }
-                                        }
-
-                                        HStack(spacing: 16) {
-                                            if let start = contest.startTimeSeconds {
-                                                Text(timeString(from: start))
-                                                    .foregroundColor(.cyan)
-                                            }
-
-                                            Text(durationString(from: contest.durationSeconds))
-                                                .foregroundColor(.cyan)
-                                        }
-
-                                        Divider().background(Color.gray)
-
-                                        HStack {
-                                            Spacer()
-                                            Text("Register")
-                                                .font(.caption)
-                                                .padding(.horizontal, 12)
-                                                .padding(.vertical, 6)
-                                                .background(Color.blue.opacity(0.2))
-                                                .foregroundColor(.blue)
-                                                .cornerRadius(8)
-                                        }
-                                    }
-                                    .padding()
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 16)
-                                            .stroke(
-                                                LinearGradient(
-                                                    colors: [.cyan, .blue],
-                                                    startPoint: .leading,
-                                                    endPoint: .trailing
-                                                ),
-                                                lineWidth: 1
-                                            )
-                                    )
-                                    .background(Color.black.opacity(0.8))
-                                    .cornerRadius(16)
-                                    .padding(.horizontal)
+                                NavigationLink {
+                                    ContestDetailView(contest: contest)
+                                } label: {
+                                    Text(contest.name)
+                                        .padding()
                                 }
                             }
                         }
@@ -134,34 +62,62 @@ struct ContestListView: View {
                 }
             }
             .navigationTitle("Contests")
-            .background(Color.black.ignoresSafeArea())
 
-            // Error Alert
             .alert("Error", isPresented: $showError) {
                 Button("OK") {}
             } message: {
                 Text(errorMessage)
             }
 
-            // Initial Load
             .onAppear {
-                Task {
-                    await loadContests()
-                }
+                Task { await loadContests() }
             }
         }
     }
 
-    private func timeString(from timestamp: Int) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(timestamp))
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+    var filteredContests: [CFContest] {
+        contests.filter { contest in
+            let matchesPhase =
+                (selectedPhase == "Upcoming" && contest.phase == "BEFORE") ||
+                (selectedPhase == "Active" && contest.phase == "CODING") ||
+                (selectedPhase == "Finished" && contest.phase == "FINISHED")
+
+            let matchesSearch =
+                searchText.isEmpty ||
+                contest.name.lowercased().contains(searchText.lowercased())
+
+            return matchesPhase && matchesSearch
+        }
     }
 
-    private func durationString(from seconds: Int) -> String {
-        let hours = seconds / 3600
-        let minutes = (seconds % 3600) / 60
-        return "\(hours)h \(minutes)m"
+    // MARK: API
+
+    func loadContests() async {
+        isRefreshing = true
+        do {
+            contests = try await fetchContests()
+        } catch {
+            errorMessage = error.localizedDescription
+            showError = true
+        }
+        isRefreshing = false
+    }
+
+    func fetchContests() async throws -> [CFContest] {
+        let url = URL(string: "https://codeforces.com/api/contest.list")!
+        let (data, _) = try await URLSession.shared.data(from: url)
+
+        let response = try JSONDecoder().decode(ContestResponse.self, from: data)
+
+        guard response.status == "OK" else {
+            throw NSError(domain: "", code: 0)
+        }
+
+        return response.result ?? []
+    }
+    
+    func handleError(_ error: Error) {
+        errorMessage = error.localizedDescription
+        showError = true
     }
 }
