@@ -1,17 +1,14 @@
+// MARK: - ProfileView.swift
 import SwiftUI
 import SDWebImageSwiftUI
-
 import Charts
 
-
 struct ProfileView: View {
-    @State var profileData: CodeforcesUser?
-    @State var errorMessage: String?
-    @State var solvedProblemsCount: Int?
+    @StateObject private var viewModel = ProfileViewModel()
     @EnvironmentObject var userManager: UserManager
-    @State private var showLogoutConfirm = false
     @AppStorage("userHandle") private var storedHandle: String?
-    @State var ratingHistory: [RatingChange] = []
+    
+    @State private var showLogoutConfirm = false
     
     var userHandle: String {
         userManager.userHandle
@@ -19,22 +16,41 @@ struct ProfileView: View {
     
     var body: some View {
         ScrollView {
-            if let user = profileData {
+            switch viewModel.state {
+            case .idle, .loading:
+                //Created a VStack to force it to take full width while loadingg
+                VStack {
+                    Spacer()
+                    ProgressView("Fetching Profile...")
+                        .progressViewStyle(CircularProgressViewStyle(tint: .neonBlue))
+                        .foregroundColor(.textSecondary)
+                    Spacer()// Spacer because it was earlier sitting at bottom
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: UIScreen.main.bounds.height * 0.7)
+                // For fixing it at the centre vertically
+                
+            case .success(let user, let solvedCount, let ratingHistory):
                 VStack(spacing: 20) {
                     profileHeader(user: user)
                     ratingSection(user: user)
-                    statsSection(user: user)
-                    ratingChart()
+                    statsSection(user: user, solvedProblemsCount: solvedCount)
+                    ratingChart(ratingHistory: ratingHistory)
                 }
                 .padding()
-            } else if let errorMessage = errorMessage {
-                Text(errorMessage)
-                    .foregroundColor(.red)
-                    .padding()
-            } else {
-                ProgressView("Fetching Profile...")
+                
+            case .error(let message):
+                VStack(spacing: 16) {
+                    Text(message)
+                        .foregroundColor(.red)
+                    
+                    Button("Try Again") {
+                        viewModel.fetchAllProfileData(handle: userHandle)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(.top, 50)
             }
-            
         }
         .navigationTitle("Profile")
         .background(
@@ -46,16 +62,13 @@ struct ProfileView: View {
             .ignoresSafeArea()
         )
         .onAppear {
-            fetchProfileData()
-            fetchSolvedProblems()
-            fetchRatingHistory()
+            viewModel.fetchAllProfileData(handle: userHandle)
         }
     }
     
-    // MARK: - Profile Header (Avatar, Handle, Rank)
+    // MARK: - Profile Header
     private func profileHeader(user: CodeforcesUser) -> some View {
         HStack(spacing: 16) {
-            
             ZStack {
                 Circle()
                     .fill(LinearGradient(
@@ -89,6 +102,7 @@ struct ProfileView: View {
                     )
             )
             .shadow(color: .neonBlue.opacity(0.4), radius: 8)
+            
             VStack(alignment: .leading, spacing: 4) {
                 Text(user.handle)
                     .font(.title.bold())
@@ -99,6 +113,7 @@ struct ProfileView: View {
             }
             
             Spacer()
+            
             Button(action: {
                 showLogoutConfirm = true
             }) {
@@ -116,6 +131,9 @@ struct ProfileView: View {
                 Button("Log Out", role: .destructive) {
                     storedHandle = nil
                     userManager.userHandle = ""
+                    Task {
+                        await viewModel.handleLogout()
+                    }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
@@ -127,7 +145,6 @@ struct ProfileView: View {
     
     // MARK: - Rating Section
     private func ratingSection(user: CodeforcesUser) -> some View {
-        
         let currentRating = user.rating ?? 0
         let maxRatingValue = user.maxRating ?? 1
         let progressPercentage = Int((Double(currentRating) / Double(maxRatingValue)) * 100)
@@ -137,7 +154,9 @@ struct ProfileView: View {
                 Text("Rating:")
                     .font(.headline)
                     .foregroundColor(.textSecondary)
+                
                 Spacer()
+                
                 Text("\(currentRating)")
                     .font(.system(.title3).weight(.bold))
                     .foregroundStyle(
@@ -151,25 +170,21 @@ struct ProfileView: View {
             }
             .frame(height: 20)
             
-            ProgressView(value: Double(currentRating), total: Double(maxRatingValue)) {
-                
-            } currentValueLabel: {
-                
-            }
-            .progressViewStyle(NeonProgressStyle())
-            .overlay(
-                HStack {
-                    Text("\(currentRating)/\(maxRatingValue)")
-                        .font(.caption)
-                    Spacer()
-                    Text("\(progressPercentage)%")
-                        .font(.caption)
-                }
+            ProgressView(value: Double(currentRating), total: Double(maxRatingValue))
+                .progressViewStyle(NeonProgressStyle())
+                .overlay(
+                    HStack {
+                        Text("\(currentRating)/\(maxRatingValue)")
+                            .font(.caption)
+                        Spacer()
+                        Text("\(progressPercentage)%")
+                            .font(.caption)
+                    }
                     .foregroundColor(.textSecondary)
                     .padding(.horizontal, 4)
                     .offset(y: 14)
-            )
-            .frame(height: 20)
+                )
+                .frame(height: 20)
         }
         .padding()
         .background(
@@ -179,10 +194,7 @@ struct ProfileView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(
                             LinearGradient(
-                                gradient: Gradient(colors: [
-                                    .neonBlue.opacity(0.4),
-                                    .neonPurple.opacity(0.4)
-                                ]),
+                                colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
@@ -190,40 +202,17 @@ struct ProfileView: View {
                         )
                 )
         )
-        .cornerRadius(12)
     }
-    struct NeonProgressStyle: ProgressViewStyle {
-        func makeBody(configuration: Configuration) -> some View {
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 4)
-                    .frame(height: 8)
-                    .foregroundColor(.darkerBackground)
-                
-                RoundedRectangle(cornerRadius: 4)
-                    .frame(
-                        width: configuration.fractionCompleted.map { CGFloat($0) * UIScreen.main.bounds.width - 32 },
-                        height: 8
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.neonBlue, .neonPurple],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            }
-            
-        }
-    }
-    // MARK: - Updated Statistics Section
-    private func statsSection(user: CodeforcesUser) -> some View {
+    
+    // MARK: - Statistics Section
+    private func statsSection(user: CodeforcesUser, solvedProblemsCount: Int) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("User Statistics")
                 .font(.headline)
                 .foregroundColor(.textSecondary)
             
             HStack(spacing: 10) {
-                StatCard(value: "\(solvedProblemsCount ?? 0)", label: "Solved")
+                StatCard(value: "\(solvedProblemsCount)", label: "Solved")
                 StatCard(value: "\(user.contribution ?? 0)", label: "Contributions")
                 StatCard(value: "\(user.rating ?? 0)", label: "Rating")
             }
@@ -236,10 +225,7 @@ struct ProfileView: View {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(
                             LinearGradient(
-                                gradient: Gradient(colors: [
-                                    .neonBlue.opacity(0.4),
-                                    .neonPurple.opacity(0.4)
-                                ]),
+                                colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             ),
@@ -247,66 +233,21 @@ struct ProfileView: View {
                         )
                 )
         )
-        .cornerRadius(12)
     }
     
-    // MARK: - StatCard View
-    struct StatCard: View {
-        let value: String
-        let label: String
-        
-        var body: some View {
-            VStack {
-                Text(value)
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [.neonBlue, .neonPurple],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
-                
-                Text(label)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundColor(.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.darkerBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(
-                                LinearGradient(
-                                    gradient: Gradient(colors: [
-                                        .neonBlue.opacity(0.4),
-                                        .neonPurple.opacity(0.4)
-                                    ]),
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    )
-            )
-            .cornerRadius(12)
-        }
-    }
-   
-    
-    // MARK: - API Fetch Function
-    
-    private func ratingChart() -> some View {
+    // MARK: - Rating Chart
+    private func ratingChart(ratingHistory: [RatingChange]) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Rating Progress")
                 .font(.headline)
                 .foregroundColor(.textSecondary)
             
             if ratingHistory.isEmpty {
-                ProgressView()
+                Text("No rating history available.")
+                    .font(.subheadline)
+                    .foregroundColor(.textSecondary)
                     .frame(height: 150)
+                    .frame(maxWidth: .infinity)
             } else {
                 Chart {
                     ForEach(ratingHistory, id: \.contestId) { change in
@@ -325,7 +266,7 @@ struct ProfileView: View {
                     }
                 }
                 .chartXAxis {
-                    AxisMarks(values: .stride(by: .month)) { value in
+                    AxisMarks(values: .stride(by: .month)) { _ in
                         AxisGridLine()
                         AxisTick()
                         AxisValueLabel(format: .dateTime.month(.abbreviated))
@@ -357,6 +298,69 @@ struct ProfileView: View {
     }
 }
 
+// MARK: - Supporting Views
+struct NeonProgressStyle: ProgressViewStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(cornerRadius: 4)
+                .frame(height: 8)
+                .foregroundColor(.darkerBackground)
+            
+            RoundedRectangle(cornerRadius: 4)
+                .frame(
+                    width: configuration.fractionCompleted.map { CGFloat($0) * UIScreen.main.bounds.width - 32 },
+                    height: 8
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.neonBlue, .neonPurple],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+        }
+    }
+}
+
+struct StatCard: View {
+    let value: String
+    let label: String
+    
+    var body: some View {
+        VStack {
+            Text(value)
+                .font(.title2.weight(.bold))
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [.neonBlue, .neonPurple],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            
+            Text(label)
+                .font(.caption2.weight(.semibold))
+                .foregroundColor(.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.darkerBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            LinearGradient(
+                                colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+    }
+}
 // MARK: - Preview
 #Preview {
     NavigationStack {

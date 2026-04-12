@@ -1,6 +1,12 @@
 import Foundation
 import SwiftUI
 
+// MARK: - API Response Wrapper
+struct CodeforcesResponse<T: Codable>: Codable {
+    let status: String
+    let result: T
+}
+
 struct RatingChange: Codable {
     let contestId: Int
     let contestName: String

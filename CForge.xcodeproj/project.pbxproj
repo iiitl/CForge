@@ -412,6 +412,8 @@
 				DEVELOPMENT_TEAM = 5SG2NQS75A;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "CForge requires access to save contest reminders directly to your calendar.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "CForge requires access to save contest reminders.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -442,6 +444,8 @@
 				DEVELOPMENT_TEAM = 5SG2NQS75A;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription = "CForge requires access to save contest reminders directly to your calendar.";
+				INFOPLIST_KEY_NSCalendarsUsageDescription = "CForge requires access to save contest reminders.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
