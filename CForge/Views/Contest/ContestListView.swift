@@ -3,6 +3,7 @@ import EventKit
 import EventKitUI
 
 struct ContestListView: View {
+
     @State internal var contests: [CFContest] = []
     @State internal var searchText = ""
     @State internal var isRefreshing = false
@@ -33,6 +34,7 @@ struct ContestListView: View {
     }
     
     // MARK: - View Components
+
     private var contentView: some View {
         ScrollView {
             SearchBar(text: $searchText, placeholder: "Search contests...")
@@ -300,9 +302,6 @@ struct ContestRow: View {
 
 struct ContestDetailView: View {
     let contest: ContestListView.CFContest
-    @StateObject internal var calenderService = CalendarService()
-    @State internal var upcomingContest : EKEvent?
-    @State internal var showAlert = false
     
     // Calendar functionality restored
     @StateObject internal var calenderService = CalendarService()
@@ -371,6 +370,7 @@ struct ContestDetailView: View {
             Text(contest.name)
                 .font(.title.bold())
                 .foregroundColor(.textPrimary)
+            
             HStack(spacing: 8) {
                 if contest.isRated {
                     pillLabel(text: "Rated", colors: [.neonBlue, .neonPurple])
@@ -603,10 +603,4 @@ extension EKEvent: @retroactive Identifiable {
 // MARK: - Preview
 #Preview {
     ContestListView()
-}
-
-extension EKEvent: @retroactive Identifiable {
-    public var id: String {
-        self.eventIdentifier ?? UUID().uuidString
-    }
 }
