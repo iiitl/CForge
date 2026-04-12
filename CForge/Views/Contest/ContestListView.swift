@@ -3,11 +3,16 @@ import EventKit
 import EventKitUI
 
 struct ContestListView: View {
+
     @State internal var contests: [CFContest] = []
     @State internal var searchText = ""
     @State internal var isRefreshing = false
     @State internal var errorMessage: String?
     @State internal var showError = false
+    
+    @State internal var selectedPhase: ContestPhaseSelection = .upcoming
+    @State internal var selectedType: ContestTypeSelection = .all
+    @State internal var ratedOnly: Bool = false
     
     var body: some View {
         NavigationStack {
@@ -29,25 +34,35 @@ struct ContestListView: View {
     }
     
     // MARK: - View Components
+
     private var contentView: some View {
-        ScrollView {
+        /* Wrapped in a VStack to keep the filters sticky at the top
+                         So that the user may switch the type of contests he's looking for without having the need to scroll back up to change filters*/
+        VStack(spacing: 0) {
             SearchBar(text: $searchText, placeholder: "Search contests...")
                 .padding(.horizontal)
                 .padding(.top, 8)
                 .shadow(radius: 1)
-            LazyVStack(spacing: 0) {
-                ForEach(filteredContests) { contest in
-                    NavigationLink {
-                        ContestDetailView(contest: contest)
-                    } label: {
-                        contestCard(contest: contest)
-                            .padding(.bottom, 8)
+            
+            filterSection
+                .padding(.bottom, 8)
+            
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(filteredContests) { contest in
+                        NavigationLink {
+                            ContestDetailView(contest: contest)
+                        } label: {
+                            contestCard(contest: contest)
+                                .padding(.bottom, 8)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+            .refreshable { await refreshContests() }
         }
         .background(
             LinearGradient(
@@ -57,15 +72,60 @@ struct ContestListView: View {
             )
             .ignoresSafeArea()
         )
-        .refreshable { await refreshContests() }
     }
+    
+    private var filterSection: some View {
+        VStack(spacing: 12) {
+            // Replaced default Picker with custom FilterChips to match design language
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ContestPhaseSelection.allCases, id: \.self) { phase in
+                        FilterChip(title: phase.rawValue, isSelected: selectedPhase == phase) {
+                            selectedPhase = phase
+                        }
+                    }
+                }
+                .padding(.horizontal)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ContestTypeSelection.allCases, id: \.self) { type in
+                        FilterChip(title: type.rawValue, isSelected: selectedType == type) {
+                            selectedType = type
+                        }
+                    }
+
+                    Divider()
+                        .frame(height: 20)
+                        .background(Color.gray.opacity(0.5))
+
+                    FilterChip(title: "Rated Only", isSelected: ratedOnly) {
+                        ratedOnly.toggle()
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+        .padding(.top, 8)
+    }
+
     private func contestCard(contest: CFContest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             
             VStack(alignment: .leading, spacing: 6) {
-                Text(contest.name)
-                    .font(.headline)
-                    .foregroundColor(.primary)
+                HStack {
+                    Text(contest.name)
+                        .font(.headline)
+                        .foregroundColor(.primary)
+                    
+                    Spacer()
+                    
+                    // Uses the shared constant instead of duplicated strings
+                    if ContestPhaseSelection.activePhases.contains(contest.phase) {
+                        LiveBadge()
+                    }
+                }
                 
                 HStack(spacing: 16) {
                     Label(contest.startTime.formatted(date: .omitted, time: .shortened),
@@ -77,9 +137,9 @@ struct ContestListView: View {
                 .labelStyle(NeonLabelStyle())
             }
             
-            
             Divider()
                 .padding(.vertical, 4)
+            
             HStack {
                 if contest.isRated {
                     Text("Rated")
@@ -95,7 +155,7 @@ struct ContestListView: View {
                 Spacer()
                 
                 NavigationLink(destination: ContestDetailView(contest: contest)) {
-                    Text("Register")
+                    Text(contest.phase == "FINISHED" ? "View Details" : "Register")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .padding(.horizontal, 12)
@@ -130,7 +190,9 @@ struct ContestListView: View {
         .shadow(color: .neonBlue.opacity(0.2), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 4)
         .padding(.vertical, 8)
+        .opacity(contest.phase == "FINISHED" ? 0.6 : 1.0)
     }
+    
     struct NeonLabelStyle: LabelStyle {
         func makeBody(configuration: Configuration) -> some View {
             HStack(spacing: 4) {
@@ -143,6 +205,75 @@ struct ContestListView: View {
 }
 
 // MARK: - Subviews
+struct FilterChip: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Text(title)
+                .font(.caption)
+                .fontWeight(.semibold)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(
+                    ZStack {
+                        if isSelected {
+                            LinearGradient(
+                                colors: [.neonBlue, .neonPurple],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        } else {
+                            Color.darkerBackground
+                        }
+                    }
+                )
+                .foregroundColor(isSelected ? .white : .primary)
+                .clipShape(RoundedRectangle(cornerRadius: 12)) // Replaced deprecated cornerRadius
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(
+                            LinearGradient(
+                                colors: [.neonBlue.opacity(0.4), .neonPurple.opacity(0.4)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct LiveBadge: View {
+    @State private var isPulsing = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(Color.red)
+                .frame(width: 6, height: 6)
+                .opacity(isPulsing ? 0.3 : 1.0)
+            Text("LIVE")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundColor(.red)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(Color.red.opacity(0.1))
+        .cornerRadius(4)
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                isPulsing = true
+            }
+        }
+    }
+}
+
 struct ContestRow: View {
     let contest: ContestListView.CFContest
     
@@ -176,9 +307,11 @@ struct ContestRow: View {
 
 struct ContestDetailView: View {
     let contest: ContestListView.CFContest
+    
+    // Calendar functionality restored
     @StateObject internal var calenderService = CalendarService()
-    @State internal var upcomingContest : EKEvent?
-    @State internal var showAlert = false
+    @State internal var upcomingContest: EKEvent?
+    @State private var showCalendarAlert = false
     
     var body: some View {
         ScrollView {
@@ -189,7 +322,6 @@ struct ContestDetailView: View {
                 infoSection
                 Divider()
                 actionButtons
-                
             }
             .padding()
         }
@@ -203,20 +335,22 @@ struct ContestDetailView: View {
             )
             .ignoresSafeArea()
         )
+        // Calendar Modifiers restored
         .sheet(item: $upcomingContest) { event in
             EventEditView(eventStore: calenderService.calendarStore, event: event)
         }
-        .alert("Calendar Access Required", isPresented: $showAlert) {
-            Button("Open Settings"){
-                if let url = URL(string: UIApplication.openSettingsURLString){
+        .alert("Calendar Access Required", isPresented: $showCalendarAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
                     UIApplication.shared.open(url)
                 }
             }
-            Button("Cancel", role: .cancel){}
+            Button("Cancel", role: .cancel) {}
         } message: {
             Text("Please enable calendar access in Settings to save contest reminders.")
         }
     }
+    
     private func detailRow(icon: String, title: String, value: String) -> some View {
         HStack {
             Label {
@@ -235,11 +369,13 @@ struct ContestDetailView: View {
                 .foregroundColor(.primary)
         }
     }
+    
     private var headerSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(contest.name)
                 .font(.title.bold())
                 .foregroundColor(.textPrimary)
+            
             HStack(spacing: 8) {
                 if contest.isRated {
                     pillLabel(text: "Rated", colors: [.neonBlue, .neonPurple])
@@ -248,7 +384,7 @@ struct ContestDetailView: View {
             }
         }
     }
-    
+
     private func pillLabel(text: String, colors: [Color]) -> some View {
         Text(text)
             .font(.caption.weight(.semibold))
@@ -309,13 +445,13 @@ struct ContestDetailView: View {
     private var infoSection: some View {
         VStack(spacing: 16) {
             infoRow(icon: "calendar", title: "Start Time",
-                    value: contest.startTime.formatted(date: .complete, time: .shortened))
+                   value: contest.startTime.formatted(date: .complete, time: .shortened))
             
             infoRow(icon: "clock", title: "Duration",
-                    value: contest.duration)
+                   value: contest.duration)
             
-            infoRow(icon: "person.2.fill", title: "Participants",
-                    value: "12,345 registered")
+            infoRow(icon: "person.2.fill", title: "Type",
+                    value: contest.type)
         }
         .padding()
         .background(
@@ -357,7 +493,6 @@ struct ContestDetailView: View {
     
     private var actionButtons: some View {
         VStack(spacing: 12) {
-            
             if let registrationUrl = contest.registrationUrl {
                 Link(destination: registrationUrl) {
                     Text("Register Now")
@@ -380,20 +515,22 @@ struct ContestDetailView: View {
                         .shadow(color: .neonBlue.opacity(0.4), radius: 8, x: 0, y: 4)
                 }
             } else {
-                Button("Registration Closed") {}
-                    .disabled(true)
-                    .buttonStyle(PrimaryButtonStyle())
+                Button("Registration Closed") {
+                    
+                }
+                .disabled(true)
+                .buttonStyle(PrimaryButtonStyle())
             }
             
+            // "Add to Calendar" button restored
             Button(action: {
-                Task{
+                Task {
                     let granted = await calenderService.requestAccess()
                     if granted {
                         let newEvent = calenderService.pinEvents(for: contest)
                         self.upcomingContest = newEvent
-                    }
-                    else{
-                        self.showAlert = true
+                    } else {
+                        self.showCalendarAlert = true
                     }
                 }
             }) {
@@ -411,11 +548,10 @@ struct ContestDetailView: View {
                 )
                 .foregroundColor(.neonBlue)
             }
-            
         }
         .padding(.top, 8)
     }
-    
+
     private func showAlert(title: String, message: String) {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootViewController = windowScene.windows.first?.rootViewController else {
@@ -426,7 +562,6 @@ struct ContestDetailView: View {
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         rootViewController.present(alert, animated: true)
     }
-    
 }
 
 // MARK: - Styles
@@ -466,10 +601,4 @@ struct SecondaryButtonStyle: ButtonStyle {
 // MARK: - Preview
 #Preview {
     ContestListView()
-}
-
-extension EKEvent: @retroactive Identifiable {
-    public var id: String {
-        self.eventIdentifier ?? UUID().uuidString
-    }
 }
