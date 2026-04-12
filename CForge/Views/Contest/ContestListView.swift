@@ -44,19 +44,13 @@ struct ContestListView: View {
                 .padding(.top, 8)
                 .shadow(radius: 1)
             
-            filterSection
-                .padding(.bottom, 8)
-            
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(filteredContests) { contest in
-                        NavigationLink {
-                            ContestDetailView(contest: contest)
-                        } label: {
-                            contestCard(contest: contest)
-                                .padding(.bottom, 8)
-                        }
-                        .buttonStyle(.plain)
+            LazyVStack(spacing: 0) {
+                ForEach(filteredContests) { contest in
+                    NavigationLink {
+                        ContestDetailView(contest: contest)
+                    } label: {
+                        contestCard(contest: contest)
+                            .padding(.bottom, 8)
                     }
                 }
                 .padding(.horizontal)
@@ -140,7 +134,7 @@ struct ContestListView: View {
             Divider()
                 .padding(.vertical, 4)
             
-            HStack {
+            HStack(spacing: 8) {
                 if contest.isRated {
                     Text("Rated")
                         .font(.caption)
@@ -154,8 +148,12 @@ struct ContestListView: View {
                 
                 Spacer()
                 
+                if !contest.hasStarted {
+                    ContestReminderButton(contest: contest)
+                }
+                
                 NavigationLink(destination: ContestDetailView(contest: contest)) {
-                    Text(contest.phase == "FINISHED" ? "View Details" : "Register")
+                    Text("Register")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .padding(.horizontal, 12)
@@ -164,7 +162,6 @@ struct ContestListView: View {
                         .foregroundColor(.blue)
                         .cornerRadius(4)
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(16)
@@ -308,10 +305,8 @@ struct ContestRow: View {
 struct ContestDetailView: View {
     let contest: ContestListView.CFContest
     
-    // Calendar functionality restored
-    @StateObject internal var calenderService = CalendarService()
-    @State internal var upcomingContest: EKEvent?
-    @State private var showCalendarAlert = false
+    @State private var isReminderSet: Bool = false
+    @State private var showSettingsAlert = false
     
     var body: some View {
         ScrollView {
@@ -335,19 +330,16 @@ struct ContestDetailView: View {
             )
             .ignoresSafeArea()
         )
-        // Calendar Modifiers restored
-        .sheet(item: $upcomingContest) { event in
-            EventEditView(eventStore: calenderService.calendarStore, event: event)
+        .onAppear {
+            isReminderSet = NotificationManager.shared.isReminderSet(for: contest.id)
         }
-        .alert("Calendar Access Required", isPresented: $showCalendarAlert) {
-            Button("Open Settings") {
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    UIApplication.shared.open(url)
-                }
+        .alert("Notifications Disabled", isPresented: $showSettingsAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Settings") {
+                NotificationManager.shared.openSettings()
             }
-            Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Please enable calendar access in Settings to save contest reminders.")
+            Text("Please enable notifications in Settings to receive contest reminders.")
         }
     }
     
@@ -445,10 +437,10 @@ struct ContestDetailView: View {
     private var infoSection: some View {
         VStack(spacing: 16) {
             infoRow(icon: "calendar", title: "Start Time",
-                   value: contest.startTime.formatted(date: .complete, time: .shortened))
+                    value: contest.startTime.formatted(date: .complete, time: .shortened))
             
             infoRow(icon: "clock", title: "Duration",
-                   value: contest.duration)
+                    value: contest.duration)
             
             infoRow(icon: "person.2.fill", title: "Type",
                     value: contest.type)
@@ -493,6 +485,7 @@ struct ContestDetailView: View {
     
     private var actionButtons: some View {
         VStack(spacing: 12) {
+            
             if let registrationUrl = contest.registrationUrl {
                 Link(destination: registrationUrl) {
                     Text("Register Now")
@@ -515,41 +508,66 @@ struct ContestDetailView: View {
                         .shadow(color: .neonBlue.opacity(0.4), radius: 8, x: 0, y: 4)
                 }
             } else {
-                Button("Registration Closed") {
-                    
-                }
-                .disabled(true)
-                .buttonStyle(PrimaryButtonStyle())
+                Button("Registration Closed") { }
+                    .disabled(true)
+                    .buttonStyle(PrimaryButtonStyle())
             }
             
-            // "Add to Calendar" button restored
-            Button(action: {
-                Task {
-                    let granted = await calenderService.requestAccess()
-                    if granted {
-                        let newEvent = calenderService.pinEvents(for: contest)
-                        self.upcomingContest = newEvent
-                    } else {
-                        self.showCalendarAlert = true
+            if !contest.hasStarted {
+                Button(action: {
+                    toggleReminder()
+                }) {
+                    HStack {
+                        Image(systemName: isReminderSet ? "bell.fill" : "bell")
+                        Text(isReminderSet ? "Remove Reminder" : "Remind Me")
                     }
+                    .font(.headline.weight(.bold))
+                    .frame(maxWidth: .infinity)
+                    .padding()
+                    .background(
+                        LinearGradient(
+                            colors: isReminderSet ? [Color.gray.opacity(0.4), Color.gray.opacity(0.4)] : [.neonBlue, .neonPurple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .cornerRadius(12)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(.white.opacity(0.2), lineWidth: 1)
+                        )
+                    )
+                    .foregroundColor(.white)
+                    .shadow(color: isReminderSet ? .clear : .neonBlue.opacity(0.4), radius: 8, x: 0, y: 4)
                 }
-            }) {
-                HStack {
-                    Image(systemName: "calendar.badge.plus")
-                    Text("Add to Calendar")
-                }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(LinearGradient(colors: [.neonBlue, .neonPurple], startPoint: .leading, endPoint: .trailing), lineWidth: 2)
-                        .background(Color.neonBlue.opacity(0.1))
-                )
-                .foregroundColor(.neonBlue)
             }
         }
         .padding(.top, 8)
+    }
+
+    private func toggleReminder() {
+        if isReminderSet {
+            NotificationManager.shared.removeReminder(for: contest.id)
+            isReminderSet = false
+        } else {
+            NotificationManager.shared.checkStatus { status in
+                if status == .authorized {
+                    schedule()
+                } else if status == .notDetermined {
+                    NotificationManager.shared.requestPermission { granted in
+                        if granted {
+                            schedule()
+                        }
+                    }
+                } else {
+                    showSettingsAlert = true
+                }
+            }
+        }
+    }
+    
+    private func schedule() {
+        NotificationManager.shared.scheduleReminder(for: contest.id, title: contest.name, startTime: contest.startTime, isRated: contest.isRated)
+        isReminderSet = true
     }
 
     private func showAlert(title: String, message: String) {
@@ -561,6 +579,72 @@ struct ContestDetailView: View {
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: "OK", style: .default))
         rootViewController.present(alert, animated: true)
+    }
+}
+
+// MARK: - Reminder Button Component
+struct ContestReminderButton: View {
+    let contest: ContestListView.CFContest
+    
+    @State private var isReminderSet: Bool = false
+    @State private var showSettingsAlert = false
+    
+    var body: some View {
+        Button(action: {
+            toggleReminder()
+        }) {
+            Image(systemName: isReminderSet ? "bell.fill" : "bell")
+                .font(.caption)
+                .fontWeight(.semibold)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 4)
+                .background(Color.yellow.opacity(0.1))
+                .foregroundColor(.yellow)
+                .cornerRadius(4)
+        }
+        .buttonStyle(.borderless)
+        .onAppear {
+            isReminderSet = NotificationManager.shared.isReminderSet(for: contest.id)
+        }
+        .alert("Notifications Disabled", isPresented: $showSettingsAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Settings") {
+                NotificationManager.shared.openSettings()
+            }
+        } message: {
+            Text("Please enable notifications in Settings to receive contest reminders.")
+        }
+    }
+    
+    private func toggleReminder() {
+        if isReminderSet {
+            NotificationManager.shared.removeReminder(for: contest.id)
+            isReminderSet = false
+        } else {
+            NotificationManager.shared.checkStatus { status in
+                if status == .authorized {
+                    schedule()
+                } else if status == .notDetermined {
+                    NotificationManager.shared.requestPermission { granted in
+                        if granted {
+                            schedule()
+                        }
+                    }
+                } else {
+                    showSettingsAlert = true
+                }
+            }
+        }
+    }
+    
+    private func schedule() {
+        NotificationManager.shared.scheduleReminder(
+            for: contest.id,
+            title: contest.name,
+            startTime: contest.startTime,
+            isRated: contest.isRated
+        )
+        isReminderSet = true
     }
 }
 
@@ -597,7 +681,6 @@ struct SecondaryButtonStyle: ButtonStyle {
             .cornerRadius(10)
     }
 }
-
 // MARK: - Preview
 #Preview {
     ContestListView()

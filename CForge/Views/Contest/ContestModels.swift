@@ -8,8 +8,9 @@ extension ContestListView {
         let phase: String
         let durationSeconds: Int
         let startTimeSeconds: Int?
+        
         var registrationUrl: URL? {
-                URL(string: "https://codeforces.com/contestRegistration/\(id)")
+            URL(string: "https://codeforces.com/contestRegistration/\(id)")
         }
         
         var contestUrl: URL? {
@@ -29,12 +30,17 @@ extension ContestListView {
             let minutes = (durationSeconds % 3600) / 60
             return "\(hours)h \(minutes)m"
         }
+        
         var timeUntilStart: String {
-                let formatter = DateComponentsFormatter()
-                formatter.allowedUnits = [.day, .hour, .minute]
-                formatter.unitsStyle = .abbreviated
-                return formatter.string(from: Date(), to: startTime) ?? ""
-            }
+            let formatter = DateComponentsFormatter()
+            formatter.allowedUnits = [.day, .hour, .minute]
+            formatter.unitsStyle = .abbreviated
+            return formatter.string(from: Date(), to: startTime) ?? ""
+        }
+        
+        var hasStarted: Bool {
+            return Date() >= startTime
+        }
     }
     
     struct ContestResponse: Codable {
