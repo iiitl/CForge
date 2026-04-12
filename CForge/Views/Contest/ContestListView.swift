@@ -3,45 +3,41 @@ import EventKit
 import EventKitUI
 
 struct ContestListView: View {
-    @State internal var contests: [CFContest] = []
-    @State internal var searchText = ""
-    @State internal var isRefreshing = false
-    @State internal var errorMessage: String?
-    @State internal var showError = false
+    
+    @StateObject internal var viewModel = ContestListViewModel()
     
     var body: some View {
         NavigationStack {
-            Group {
-                if contests.isEmpty && !isRefreshing {
+            ZStack{
+                backgroundGradient
+                switch viewModel.state {
+                case .idle:
+                    Color.clear.onAppear { Task { await viewModel.loadContests() } }
+                case .loading:
                     ProgressView()
-                        .onAppear { Task { await loadContests() } }
-                } else {
+                case .loaded:
                     contentView
+                case .error(let message):
+                    errorView(message: message)
                 }
             }
             .navigationTitle("Contests")
-            .alert("Error", isPresented: $showError) {
-                Button("OK") {}
-            } message: {
-                Text(errorMessage ?? "Unknown error")
-            }
+            .refreshable { await viewModel.loadContests(forceRefresh: true) }
         }
     }
     
     // MARK: - View Components
+    
     private var contentView: some View {
         ScrollView {
-            SearchBar(text: $searchText, placeholder: "Search contests...")
+            SearchBar(text: $viewModel.searchText, placeholder: "Search contests...")
                 .padding(.horizontal)
                 .padding(.top, 8)
                 .shadow(radius: 1)
             LazyVStack(spacing: 0) {
-                ForEach(filteredContests) { contest in
-                    NavigationLink {
-                        ContestDetailView(contest: contest)
-                    } label: {
+                ForEach(viewModel.filteredContests) { contest in
+                    NavigationLink(destination: ContestDetailView(contest: contest)) {
                         contestCard(contest: contest)
-                            .padding(.bottom, 8)
                     }
                     .buttonStyle(.plain)
                 }
@@ -49,6 +45,7 @@ struct ContestListView: View {
             .padding(.horizontal)
             .padding(.vertical, 8)
         }
+        
         .background(
             LinearGradient(
                 colors: [.darkBackground, .darkestBackground],
@@ -57,8 +54,27 @@ struct ContestListView: View {
             )
             .ignoresSafeArea()
         )
-        .refreshable { await refreshContests() }
     }
+    
+    private func errorView(message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.largeTitle)
+                .foregroundColor(.red)
+            Text("Failed to load contests")
+                .font(.headline)
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Retry") {
+                Task { await viewModel.loadContests(forceRefresh: true) }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding()
+    }
+    
     private func contestCard(contest: CFContest) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             
@@ -80,6 +96,8 @@ struct ContestListView: View {
             
             Divider()
                 .padding(.vertical, 4)
+            
+            
             HStack {
                 if contest.isRated {
                     Text("Rated")
@@ -144,7 +162,7 @@ struct ContestListView: View {
 
 // MARK: - Subviews
 struct ContestRow: View {
-    let contest: ContestListView.CFContest
+    let contest: CFContest
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -175,10 +193,7 @@ struct ContestRow: View {
 }
 
 struct ContestDetailView: View {
-    let contest: ContestListView.CFContest
-    @StateObject internal var calenderService = CalendarService()
-    @State internal var upcomingContest : EKEvent?
-    @State internal var showAlert = false
+    let contest: CFContest
     
     var body: some View {
         ScrollView {
@@ -203,19 +218,6 @@ struct ContestDetailView: View {
             )
             .ignoresSafeArea()
         )
-        .sheet(item: $upcomingContest) { event in
-            EventEditView(eventStore: calenderService.calendarStore, event: event)
-        }
-        .alert("Calendar Access Required", isPresented: $showAlert) {
-            Button("Open Settings"){
-                if let url = URL(string: UIApplication.openSettingsURLString){
-                    UIApplication.shared.open(url)
-                }
-            }
-            Button("Cancel", role: .cancel){}
-        } message: {
-            Text("Please enable calendar access in Settings to save contest reminders.")
-        }
     }
     private func detailRow(icon: String, title: String, value: String) -> some View {
         HStack {
@@ -248,6 +250,7 @@ struct ContestDetailView: View {
             }
         }
     }
+    
     
     private func pillLabel(text: String, colors: [Color]) -> some View {
         Text(text)
@@ -314,8 +317,8 @@ struct ContestDetailView: View {
             infoRow(icon: "clock", title: "Duration",
                     value: contest.duration)
             
-            infoRow(icon: "person.2.fill", title: "Participants",
-                    value: "12,345 registered")
+            infoRow(icon: "person.2.fill", title: "Type",
+                    value: contest.type)
         }
         .padding()
         .background(
@@ -359,7 +362,7 @@ struct ContestDetailView: View {
         VStack(spacing: 12) {
             
             if let registrationUrl = contest.registrationUrl {
-                Link(destination: registrationUrl) {
+                Link(destination: contest.registrationUrl ?? URL(string: "https://codeforces.com")!) {
                     Text("Register Now")
                         .font(.headline.weight(.bold))
                         .frame(maxWidth: .infinity)
@@ -380,36 +383,11 @@ struct ContestDetailView: View {
                         .shadow(color: .neonBlue.opacity(0.4), radius: 8, x: 0, y: 4)
                 }
             } else {
-                Button("Registration Closed") {}
-                    .disabled(true)
-                    .buttonStyle(PrimaryButtonStyle())
-            }
-            
-            Button(action: {
-                Task{
-                    let granted = await calenderService.requestAccess()
-                    if granted {
-                        let newEvent = calenderService.pinEvents(for: contest)
-                        self.upcomingContest = newEvent
-                    }
-                    else{
-                        self.showAlert = true
-                    }
+                Button("Registration Closed") {
+                    
                 }
-            }) {
-                HStack {
-                    Image(systemName: "calendar.badge.plus")
-                    Text("Add to Calendar")
-                }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(LinearGradient(colors: [.neonBlue, .neonPurple], startPoint: .leading, endPoint: .trailing), lineWidth: 2)
-                        .background(Color.neonBlue.opacity(0.1))
-                )
-                .foregroundColor(.neonBlue)
+                .disabled(true)
+                .buttonStyle(PrimaryButtonStyle())
             }
             
         }
@@ -461,6 +439,15 @@ struct SecondaryButtonStyle: ButtonStyle {
             .foregroundColor(.primary)
             .cornerRadius(10)
     }
+}
+
+private var backgroundGradient: some View {
+    LinearGradient(
+        colors: [.darkBackground, .darkestBackground],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+    .ignoresSafeArea()
 }
 
 // MARK: - Preview
