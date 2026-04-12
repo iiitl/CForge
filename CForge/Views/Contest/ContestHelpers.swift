@@ -4,6 +4,9 @@ enum ContestPhaseSelection: String, CaseIterable {
     case upcoming = "Upcoming"
     case active = "Active"
     case finished = "Finished"
+    
+    // Extracted shared constant for active phases
+    static let activePhases = ["CODING", "PENDING_SYSTEM_TEST", "SYSTEM_TEST"]
 }
 
 enum ContestTypeSelection: String, CaseIterable {
@@ -25,7 +28,8 @@ extension ContestListView {
         case .upcoming:
             result = result.filter { $0.phase == "BEFORE" }
         case .active:
-            result = result.filter { ["CODING", "PENDING_SYSTEM_TEST", "SYSTEM_TEST"].contains($0.phase) }
+            // Replaced hardcoded array with the shared constant
+            result = result.filter { ContestPhaseSelection.activePhases.contains($0.phase) }
         case .finished:
             result = result.filter { $0.phase == "FINISHED" }
         }

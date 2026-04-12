@@ -71,13 +71,17 @@ struct ContestListView: View {
     
     private var filterSection: some View {
         VStack(spacing: 12) {
-            Picker("Phase", selection: $selectedPhase) {
-                ForEach(ContestPhaseSelection.allCases, id: \.self) { phase in
-                    Text(phase.rawValue).tag(phase)
+            // Replaced default Picker with custom FilterChips to match design language
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(ContestPhaseSelection.allCases, id: \.self) { phase in
+                        FilterChip(title: phase.rawValue, isSelected: selectedPhase == phase) {
+                            selectedPhase = phase
+                        }
+                    }
                 }
+                .padding(.horizontal)
             }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -112,7 +116,8 @@ struct ContestListView: View {
                     
                     Spacer()
                     
-                    if ["CODING", "PENDING_SYSTEM_TEST", "SYSTEM_TEST"].contains(contest.phase) {
+                    // Uses the shared constant instead of duplicated strings
+                    if ContestPhaseSelection.activePhases.contains(contest.phase) {
                         LiveBadge()
                     }
                 }
@@ -298,6 +303,11 @@ struct ContestRow: View {
 struct ContestDetailView: View {
     let contest: ContestListView.CFContest
     
+    // Calendar functionality restored
+    @StateObject internal var calenderService = CalendarService()
+    @State internal var upcomingContest: EKEvent?
+    @State private var showCalendarAlert = false
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -320,6 +330,20 @@ struct ContestDetailView: View {
             )
             .ignoresSafeArea()
         )
+        // Calendar Modifiers restored
+        .sheet(item: $upcomingContest) { event in
+            EventEditView(eventStore: calenderService.calendarStore, event: event)
+        }
+        .alert("Calendar Access Required", isPresented: $showCalendarAlert) {
+            Button("Open Settings") {
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Please enable calendar access in Settings to save contest reminders.")
+        }
     }
     
     private func detailRow(icon: String, title: String, value: String) -> some View {
@@ -465,7 +489,7 @@ struct ContestDetailView: View {
     private var actionButtons: some View {
         VStack(spacing: 12) {
             if let registrationUrl = contest.registrationUrl {
-                Link(destination: contest.registrationUrl ?? URL(string: "https://codeforces.com")!) {
+                Link(destination: registrationUrl) {
                     Text("Register Now")
                         .font(.headline.weight(.bold))
                         .frame(maxWidth: .infinity)
@@ -491,6 +515,33 @@ struct ContestDetailView: View {
                 }
                 .disabled(true)
                 .buttonStyle(PrimaryButtonStyle())
+            }
+            
+            // "Add to Calendar" button restored
+            Button(action: {
+                Task {
+                    let granted = await calenderService.requestAccess()
+                    if granted {
+                        let newEvent = calenderService.pinEvents(for: contest)
+                        self.upcomingContest = newEvent
+                    } else {
+                        self.showCalendarAlert = true
+                    }
+                }
+            }) {
+                HStack {
+                    Image(systemName: "calendar.badge.plus")
+                    Text("Add to Calendar")
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(LinearGradient(colors: [.neonBlue, .neonPurple], startPoint: .leading, endPoint: .trailing), lineWidth: 2)
+                        .background(Color.neonBlue.opacity(0.1))
+                )
+                .foregroundColor(.neonBlue)
             }
         }
         .padding(.top, 8)
@@ -539,6 +590,13 @@ struct SecondaryButtonStyle: ButtonStyle {
             .background(Color(.secondarySystemBackground))
             .foregroundColor(.primary)
             .cornerRadius(10)
+    }
+}
+
+// MARK: - EventKit Extension
+extension EKEvent: @retroactive Identifiable {
+    public var id: String {
+        self.eventIdentifier ?? UUID().uuidString
     }
 }
 
