@@ -36,27 +36,33 @@ struct ContestListView: View {
     // MARK: - View Components
 
     private var contentView: some View {
-        ScrollView {
+        /* Wrapped in a VStack to keep the filters sticky at the top
+        So that the user may switch the type of contests he's looking for without having the need to scroll back up to change filters*/
+        VStack(spacing: 0) {
             SearchBar(text: $searchText, placeholder: "Search contests...")
                 .padding(.horizontal)
                 .padding(.top, 8)
                 .shadow(radius: 1)
             
             filterSection
+                .padding(.bottom, 8)
             
-            LazyVStack(spacing: 0) {
-                ForEach(filteredContests) { contest in
-                    NavigationLink {
-                        ContestDetailView(contest: contest)
-                    } label: {
-                        contestCard(contest: contest)
-                            .padding(.bottom, 8)
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(filteredContests) { contest in
+                        NavigationLink {
+                            ContestDetailView(contest: contest)
+                        } label: {
+                            contestCard(contest: contest)
+                                .padding(.bottom, 8)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
             }
-            .padding(.horizontal)
-            .padding(.vertical, 8)
+            .refreshable { await refreshContests() }
         }
         .background(
             LinearGradient(
@@ -66,7 +72,6 @@ struct ContestListView: View {
             )
             .ignoresSafeArea()
         )
-        .refreshable { await refreshContests() }
     }
     
     private var filterSection: some View {
@@ -226,7 +231,7 @@ struct FilterChip: View {
                     }
                 )
                 .foregroundColor(isSelected ? .white : .primary)
-                .cornerRadius(12)
+                .clipShape(RoundedRectangle(cornerRadius: 12)) // Replaced deprecated cornerRadius
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(
@@ -590,13 +595,6 @@ struct SecondaryButtonStyle: ButtonStyle {
             .background(Color(.secondarySystemBackground))
             .foregroundColor(.primary)
             .cornerRadius(10)
-    }
-}
-
-// MARK: - EventKit Extension
-extension EKEvent: @retroactive Identifiable {
-    public var id: String {
-        self.eventIdentifier ?? UUID().uuidString
     }
 }
 
