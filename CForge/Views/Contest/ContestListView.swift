@@ -242,7 +242,6 @@ struct ContestDetailView: View {
             Text(contest.name)
                 .font(.title.bold())
                 .foregroundColor(.textPrimary)
-            
             HStack(spacing: 8) {
                 if contest.isRated {
                     pillLabel(text: "Rated", colors: [.neonBlue, .neonPurple])
@@ -454,4 +453,10 @@ private var backgroundGradient: some View {
 // MARK: - Preview
 #Preview {
     ContestListView()
+}
+
+extension EKEvent: @retroactive Identifiable {
+    public var id: String {
+        self.eventIdentifier ?? UUID().uuidString
+    }
 }
